@@ -118,7 +118,7 @@ def build_codebase():
         os.mkdir('./Build')
 
     # build with platformio
-    os.system(f'~/.platformio/penv/bin/platformio run -d {MARLIN_DIR}')
+    os.system(f'{VENV_DIR}/bin/platformio run -d {MARLIN_DIR}')
 
     # copy platformio build to build dir
     shutil.copy(f'{MARLIN_DIR}/.pio/build/BIGTREE_BTT002/firmware.bin', './Build/firmware.bin')
