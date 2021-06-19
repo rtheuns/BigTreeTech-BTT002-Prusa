@@ -20,10 +20,10 @@ PINS = f'{MARLIN_DIR}/Marlin/src/pins/stm32f4/pins_BTT_BTT002_V1_0.h'
 MODIFICATION_TAG = 'MYMOD'
 
 MARLIN_REPO = 'https://github.com/rtheuns/Marlin'
-MARLIN_BRANCH = '2.0.8-custom-prusa'
+MARLIN_BRANCH = '2.0.9-custom-prusa'
 
 CONFIG_REPO = 'https://github.com/Marlinfirmware/Configurations';
-CONFIG_BRANCH = 'release-2.0.8'
+CONFIG_BRANCH = 'release-2.0.9'
 
 
 #
@@ -44,7 +44,8 @@ def create_venv():
 # Helper function for setting tags in the configuration
 #
 def sed(pattern, replace, file, commentsymbol = '//'):
-    print(f'   {replace}')
+    # print(f'   {replace}')
+    print(f'{replace.strip().rsplit(" //")[0]}')
 
     source = io.open(file, 'r', encoding="utf-8")
     lines = source.readlines()
@@ -71,6 +72,27 @@ def merge_config(configfile_1, configfile_2, configfile_dest):
   
     with open (configfile_dest, 'w') as fp: 
         fp.write(data) 
+
+
+
+#
+# Print app main header to console
+#
+def print_main_header(title):   
+    print_subject_header('Marlin firmware build script')
+    print(f'Base config: {CONFIG_BASE}')
+    print(f'Main branch: {MARLIN_BRANCH}')
+    print(f'Config branch: {CONFIG_BRANCH}')
+
+
+
+#
+# Print app subject header to console
+#
+def print_subject_header(subject):
+    print('')
+    print(f'{subject.upper()}')
+    print("-" * shutil.get_terminal_size().columns)
 
 
 
@@ -217,6 +239,9 @@ def set_features():
     sed(r'.*#define S_CURVE_ACCELERATION.*', '//#define S_CURVE_ACCELERATION', CONFIGURATION_H)
     sed(r'.*#define EXPERIMENTAL_SCURVE.*', '  //#define EXPERIMENTAL_SCURVE   // Enable this option to permit S-Curve Acceleration', CONFIGURATION_ADV_H)
 
+    # enable classic jerk
+    sed(r'.*#define CLASSIC_JERK', '#define CLASSIC_JERK', CONFIGURATION_H)
+
     # disable power loss recovery
     sed(r'.*#define POWER_LOSS_RECOVERY.*', '  //#define POWER_LOSS_RECOVERY', CONFIGURATION_ADV_H)
 
@@ -245,6 +270,9 @@ def set_lcd():
     # screen style
     sed(r'#define LCD_INFO_SCREEN_STYLE.*', '#define LCD_INFO_SCREEN_STYLE 0', CONFIGURATION_H)
     
+    # change sd detect state to default (low)
+    sed(r'.*#define SD_DETECT_STATE.*', '  //#define SD_DETECT_STATE HIGH', CONFIGURATION_ADV_H)
+
     # babystepping
     sed(r'.*#define BABYSTEP_MULTIPLICATOR_Z .*', '  #define BABYSTEP_MULTIPLICATOR_Z  3       // (steps or mm) Steps or millimeter distance for each Z babystep', CONFIGURATION_ADV_H)
     sed(r'.*#define BABYSTEP_MULTIPLICATOR_XY .*', '  #define BABYSTEP_MULTIPLICATOR_XY 5       // (steps or mm) Steps or millimeter distance for each XY babystep',  CONFIGURATION_ADV_H)
@@ -256,14 +284,20 @@ def set_lcd():
     sed(r'.*#define LCD_SET_PROGRESS_MANUALLY', '  #define LCD_SET_PROGRESS_MANUALLY', CONFIGURATION_ADV_H)
     sed(r'^    //#define LCD_PROGRESS_BAR.*', '    #define LCD_PROGRESS_BAR            // Show a progress bar on HD44780 LCDs for SD printing', CONFIGURATION_ADV_H)
 
+    # set print from sd as first option
+    sed(r'.*#define MEDIA_MENU_AT_TOP.*', '  #define MEDIA_MENU_AT_TOP               // Force the media menu to be listed on the top of the main menu', CONFIGURATION_ADV_H)
+
 
 
 #
 # Set some convenience options
 #
 def set_convenience():
+    # show SD card contents when inserting
     sed(r'.*#define BROWSE_MEDIA_ON_INSERT.*', '  #define BROWSE_MEDIA_ON_INSERT          // Open the file browser when media is inserted', CONFIGURATION_ADV_H)
-    sed(r'.*#define SDSORT_GCODE.*', '    #define SDSORT_GCODE       true  // Allow turning sorting on/off with LCD and M34 G-code.', CONFIGURATION_ADV_H)
+
+    # set a higher temp for PLA resulting in smoother filament load/unload
+    sed(r'#define PREHEAT_1_TEMP_HOTEND.*', '#define PREHEAT_1_TEMP_HOTEND 215', CONFIGURATION_H)
 
 
 
@@ -297,13 +331,17 @@ def set_hardware():
 # Main function
 #
 if __name__ == '__main__':
+    print_main_header('Marlin firmware build script')
+
+    print_subject_header('Installing dependencies')
     create_venv()
 
+    print_subject_header('Loading firmware codebase')
     load_codebase()
-    set_environment()
-    
-    set_info()
 
+    print_subject_header('Generating configuration')
+    set_environment()
+    set_info()
     set_safety()
     set_homing()
     set_probing()
@@ -312,4 +350,5 @@ if __name__ == '__main__':
     set_convenience()
     set_hardware()
 
+    print_subject_header('Building firmware')
     build_codebase()
