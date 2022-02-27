@@ -5,7 +5,7 @@ import datetime
 import io
 
 
-VENV_DIR = 'PlatformIO'
+VENV_DIR = 'Env'
 MARLIN_DIR = 'Marlin'
 CONFIG_DIR = 'Configurations'
 EXTRACONFIG_DIR = 'Extraconfig'
@@ -16,6 +16,7 @@ PLATFORMIO_INI = f'{MARLIN_DIR}/platformio.ini'
 CONFIGURATION_H = f'{MARLIN_DIR}/Marlin/Configuration.h'
 CONFIGURATION_ADV_H = f'{MARLIN_DIR}/Marlin/Configuration_adv.h'
 PINS = f'{MARLIN_DIR}/Marlin/src/pins/stm32f4/pins_BTT_BTT002_V1_0.h'
+SANITYCHECK = f'{MARLIN_DIR}/Marlin/src/HAL/STM32/inc/SanityCheck.h'
 
 MODIFICATION_TAG = 'MYMOD'
 
@@ -23,7 +24,7 @@ MARLIN_REPO = 'https://github.com/rtheuns/Marlin'
 MARLIN_BRANCH = '2.0.9-custom-prusa'
 
 CONFIG_REPO = 'https://github.com/Marlinfirmware/Configurations';
-CONFIG_BRANCH = 'release-2.0.9'
+CONFIG_BRANCH = 'release-2.0.9.1'
 
 
 #
@@ -31,6 +32,12 @@ CONFIG_BRANCH = 'release-2.0.9'
 #
 def create_venv():
     if not os.path.exists(VENV_DIR):
+      if os.name == 'nt':
+        os.system(f'python -m venv {VENV_DIR}')
+    
+        os.system(f'{VENV_DIR}\scripts\pip.exe install -U wheel --no-cache-dir')
+        os.system(f'{VENV_DIR}\scripts\pip.exe install -U platformio --no-cache-dir')
+      else:
         os.system(f'python3 -m venv {VENV_DIR}')
     
         os.system(f'./{VENV_DIR}/bin/pip install -U wheel --no-cache-dir')
@@ -61,16 +68,16 @@ def sed(pattern, replace, file, commentsymbol = '//'):
 # Helper method for merging a configfile with an additional config file
 #
 def merge_config(configfile_1, configfile_2, configfile_dest):
-    with open(configfile_1) as fp: 
+    with open(configfile_1, encoding="utf8") as fp: 
         data = fp.read() 
   
-    with open(configfile_2) as fp: 
+    with open(configfile_2, encoding="utf8") as fp: 
         data2 = fp.read() 
   
     data += "\n\n"
     data += data2 
   
-    with open (configfile_dest, 'w') as fp: 
+    with open (configfile_dest, 'w', encoding="utf8") as fp: 
         fp.write(data) 
 
 
@@ -140,7 +147,10 @@ def build_codebase():
         os.mkdir('./Build')
 
     # build with platformio
-    os.system(f'{VENV_DIR}/bin/platformio run -d {MARLIN_DIR}')
+    if os.name == 'nt':
+      os.system(f'{VENV_DIR}\scripts\platformio.exe run -d {MARLIN_DIR}')
+    else:
+      os.system(f'{VENV_DIR}/bin/platformio run -d {MARLIN_DIR}')
 
     # copy platformio build to build dir
     shutil.copy(f'{MARLIN_DIR}/.pio/build/BIGTREE_BTT002/firmware.bin', './Build/firmware.bin')
@@ -161,7 +171,7 @@ def set_environment():
 def set_info():
     currentdate = datetime.datetime.today().strftime('%Y-%m-%d')
 
-    sed(r'#define STRING_CONFIG_H_AUTHOR .*', '#define STRING_CONFIG_H_AUTHOR "Prusa Research"', CONFIGURATION_H)
+    sed(r'#define STRING_CONFIG_H_AUTHOR .*', '#define STRING_CONFIG_H_AUTHOR "RT"', CONFIGURATION_H)
     sed(r'.*#define CUSTOM_VERSION_FILE.*', f'\n#define STRING_DISTRIBUTION_DATE "{currentdate}"', CONFIGURATION_H)
     sed(r'.*#define CUSTOM_MACHINE_NAME .*', f'#define CUSTOM_MACHINE_NAME "Prusa MK3S+"', CONFIGURATION_H)
 
@@ -171,8 +181,10 @@ def set_info():
 # Set extra safety
 #
 def set_safety():
-    # max temperatures
-    sed(r'#define HEATER_0_MAXTEMP.*', '#define HEATER_0_MAXTEMP 275', CONFIGURATION_H)
+    # max hotend temperature taking nozzle change procedure in account
+    sed(r'#define HEATER_0_MAXTEMP.*', '#define HEATER_0_MAXTEMP 290', CONFIGURATION_H)
+
+    # max bed temperature
     sed(r'#define BED_MAXTEMP.*', '#define BED_MAXTEMP      100', CONFIGURATION_H)
 
     # temperature window and hysteresis
@@ -209,7 +221,7 @@ def set_probing():
     sed(r'#define MULTIPLE_PROBING.*', '#define MULTIPLE_PROBING 2', CONFIGURATION_H)
     sed(r'.*#define EXTRA_PROBING.*', '#define EXTRA_PROBING    1', CONFIGURATION_H)
 
-    sed(r'#define XY_PROBE_FEEDRATE.*', '#define XY_PROBE_FEEDRATE (133*60)', CONFIGURATION_H)
+    sed(r'#define XY_PROBE_FEEDRATE.*', '#define XY_PROBE_FEEDRATE (150*60)', CONFIGURATION_H)
     sed(r'.*#define Z_AFTER_PROBING.*', '#define Z_AFTER_PROBING            20 // Z position after probing is done', CONFIGURATION_H)
 
 
@@ -221,7 +233,7 @@ def set_homing():
     # sed(r'#define Y_MIN_POS.*', '#define Y_MIN_POS -4', CONFIGURATION_H)
     sed(r'#define MANUAL_Y_HOME_POS.*', '#define MANUAL_Y_HOME_POS -7', CONFIGURATION_H)
 
-    sed(r'#define HOMING_FEEDRATE_MM_M.*', '#define HOMING_FEEDRATE_MM_M { (40*60), (30*60), (8*60) }', CONFIGURATION_H)
+    sed(r'#define HOMING_FEEDRATE_MM_M.*', '#define HOMING_FEEDRATE_MM_M { (40*60), (30*60), (10*60) }', CONFIGURATION_H)
     sed(r'.*#define Z_AFTER_HOMING.*', '#define Z_AFTER_HOMING  40      // (mm) Height to move to after homing Z', CONFIGURATION_H)
 
     sed(r'.#define IMPROVE_HOMING_RELIABILITY', '  #define IMPROVE_HOMING_RELIABILITY', CONFIGURATION_ADV_H)
@@ -245,10 +257,13 @@ def set_features():
     # disable power loss recovery
     sed(r'.*#define POWER_LOSS_RECOVERY.*', '  //#define POWER_LOSS_RECOVERY', CONFIGURATION_ADV_H)
 
+    # disable speaker
+    sed(r'.*#define SPEAKER.*', '#define SPEAKER', CONFIGURATION_H)
+
     # nozzle parking
     sed(r'.*#define NOZZLE_PARK_FEATURE', '#define NOZZLE_PARK_FEATURE', CONFIGURATION_H)
-    sed(r'.*#define NOZZLE_PARK_POINT.*', '  #define NOZZLE_PARK_POINT { 10, 200, 50 }', CONFIGURATION_H)
-    sed(r'.*#define NOZZLE_PARK_Z_FEEDRATE.*', '  #define NOZZLE_PARK_Z_FEEDRATE   10   // (mm/s) Z axis feedrate (not used for delta printers)', CONFIGURATION_H)
+    sed(r'.*#define NOZZLE_PARK_POINT.*', '  #define NOZZLE_PARK_POINT { 10, 200, 80 }', CONFIGURATION_H)
+    sed(r'.*#define NOZZLE_PARK_Z_FEEDRATE.*', '  #define NOZZLE_PARK_Z_FEEDRATE   15   // (mm/s) Z axis feedrate (not used for delta printers)', CONFIGURATION_H)
     sed(r'.*#define EVENT_GCODE_SD_ABORT.*', '  #define EVENT_GCODE_SD_ABORT "G27 P2"', CONFIGURATION_ADV_H)
 
     # for octoprint
@@ -265,7 +280,7 @@ def set_features():
 # Set lcd
 #
 def set_lcd():
-    sed(r'.*#define BOOTSCREEN_TIMEOUT.*', '    #define BOOTSCREEN_TIMEOUT 4000      // (ms) Total Duration to display the boot screen(s)', CONFIGURATION_ADV_H)
+    sed(r'.*#define BOOTSCREEN_TIMEOUT.*', '    #define BOOTSCREEN_TIMEOUT 2000      // (ms) Total Duration to display the boot screen(s)', CONFIGURATION_ADV_H)
 
     # screen style
     sed(r'#define LCD_INFO_SCREEN_STYLE.*', '#define LCD_INFO_SCREEN_STYLE 0', CONFIGURATION_H)
@@ -297,7 +312,7 @@ def set_convenience():
     sed(r'.*#define BROWSE_MEDIA_ON_INSERT.*', '  #define BROWSE_MEDIA_ON_INSERT          // Open the file browser when media is inserted', CONFIGURATION_ADV_H)
 
     # set a higher temp for PLA resulting in smoother filament load/unload
-    sed(r'#define PREHEAT_1_TEMP_HOTEND.*', '#define PREHEAT_1_TEMP_HOTEND 215', CONFIGURATION_H)
+    sed(r'#define PREHEAT_1_TEMP_HOTEND.*', '#define PREHEAT_1_TEMP_HOTEND 210', CONFIGURATION_H)
 
 
 
@@ -323,8 +338,12 @@ def set_hardware():
     sed(r'.*#define EEPROM_AUTO_INIT.*', '  //#define EEPROM_AUTO_INIT  // Init EEPROM automatically on any errors.', CONFIGURATION_H)
 
     # tmc driver debugging
-    sed(r'.*#define TMC_DEBUG', '#define TMC_DEBUG', CONFIGURATION_ADV_H)
+    sed(r'.*#define TMC_DEBUG', '  //#define TMC_DEBUG', CONFIGURATION_ADV_H)
 
+    # tmc stepper config (make sure microsteps and steps per unit are correctly set)
+    sed(r'.*#define E0_MICROSTEPS.*', '    #define E0_MICROSTEPS    16', CONFIGURATION_ADV_H) # 32
+    sed(r'#define DEFAULT_AXIS_STEPS_PER_UNIT .*', '#define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 140 }', CONFIGURATION_H) # 280
+    
 
 
 #
